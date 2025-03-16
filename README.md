@@ -1,4 +1,4 @@
-# FAQ-LLM Bot
+# ContextfulLLM-API
 
 A robust API service for creating conversational AI assistants that can answer questions based on provided documentation and additional context.
 

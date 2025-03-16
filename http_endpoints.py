@@ -56,6 +56,19 @@ def get_metadata() -> MetaData:
     )
 
 
+def get_prompt_from_name(name: str):
+    "Gets prompt by prompt name"
+    try:
+        prompts_folder_path = os.getenv("PROMPTS_PATH", "")
+        prompt_path = os.path.join(prompts_folder_path, name + ".txt")
+        with open(prompt_path, "r") as file:
+            prompt = file.read()
+            return prompt
+    except FileNotFoundError:
+        logger.warning(f"Prompt: {name}.txt not found")
+        return None
+
+
 @v1_router.post("/init", tags=["session"], response_model=ServiceResponse)
 async def initialize_qna(init_params: InitParams):
     """
@@ -100,7 +113,10 @@ async def initialize_qna(init_params: InitParams):
         # Extract QnA arguments
         qna_args = {
             "client": client,
-            "prompt": init_params.qna_args.prompt or default_prompt or "",
+            "prompt": init_params.qna_args.prompt
+            or get_prompt_from_name(init_params.qna_args.prompt_name)
+            or default_prompt
+            or "",
             "additionals": init_params.qna_args.additionals,
             "chat_history": init_params.qna_args.chat_history,
         }
@@ -288,6 +304,60 @@ async def get_stream_response(job_id: str):
                 yield f"Error: {str(e)}"
 
     return StreamingResponse(stream_generator(), media_type="text/plain")
+
+
+@v1_router.get("/state", tags=["conversation"], response_model=ServiceResponse)
+async def get_session_state(
+    x_session_id: str = Header(
+        ...,
+        alias="X-Session-ID",
+        description="Active session ID for which to retrieve state information",
+    ),
+):
+    """
+    Retrieve the current state of a QnA session, including chat history and additional context.
+
+    This endpoint returns the raw chat history (all messages exchanged between the user and assistant)
+    and any additional information/context that has been added to the session.
+
+    The chat history consists of a list of message items, where each item contains:
+    - role: String indicating the sender ('user', 'assistant', or 'system')
+    - content: Text content of the message
+
+    Parameters:
+        x_session_id: Session ID provided in X-Session-ID header
+
+    Returns:
+        ServiceResponse containing:
+            - payload: Dictionary with session state information
+                - chatHistory: List of messages in chronological order
+                - additionals: Dictionary of additional context information
+            - metadata: Request metadata including message ID and timestamp
+
+    Raises:
+        HTTPException(404): If the specified session is not found
+        HTTPException(500): For any errors retrieving session state
+    """
+    if x_session_id not in qna_instances:
+        raise HTTPException(status_code=404, detail=f"Session {x_session_id} not found")
+
+    qna_instance, _ = qna_instances[x_session_id]
+
+    try:
+        # Extract chat history from QnA instance
+        chat_history = qna_instance.chat_history
+
+        # Extract additionals dictionary
+        additionals = qna_instance.additionals
+
+        # Prepare payload
+        payload = {"chatHistory": chat_history, "additionals": additionals}
+
+        return ServiceResponse(payload=payload, metadata=get_metadata())
+
+    except Exception as e:
+        logger.error(f"Error getting session state: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @v1_router.post("/additionals", tags=["context"], response_model=ServiceResponse)

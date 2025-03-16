@@ -45,10 +45,15 @@ class QnAArgs(BaseModel):
         description="System prompt to guide assistant behavior, if not provided, will default to a default prompt hosted in the deployment environment",
         example="You are a helpful assistant specialized in answering questions about our FAQ...",
     )
+    prompt_name: str = Field(
+        None,
+        description='Name of prompt (in the prompts folder, specified by env variable `PROMPTS_PATH`), for example, if I set this value to be "prompt1", then the endpoint will attempt to load "prompt1.txt" in the prompts folder. When both `prompt` and `promptName` is provided, `prompt` will take presidence',
+        alias="promptName",
+    )
     model: str = Field(
         None,
         description="OpenAI model to use for generating responses, If not provided, defaults to the `OPENAI_MODEL` environmental variable in the host environment. Leave blank unless there is a reason to override this setting",
-        example="gpt-3.5-turbo",
+        example="nousresearch/hermes-3-llama-3.1-405b",
     )
     temperature: Optional[float] = Field(
         None,
@@ -224,6 +229,42 @@ class RemoveAdditionalsRequest(BaseModel):
         description="List of additional information IDs to remove",
         min_items=1,
         example=["pricing_data", "user_stats"],
+    )
+
+    class Config:
+        populate_by_name = True
+
+
+# This is for the `get_session_state` endpoint, is currently not used, but will be used when we refactor the code to use a custom data class for response of each endpoint
+class ChatHistoryItem(BaseModel):
+    """Model for a single chat history message item."""
+
+    role: str = Field(
+        ...,
+        description="Role of the message sender (user, assistant, or system)",
+        example="user",
+    )
+    content: Union[str, List] = Field(
+        ...,
+        description="Content of the message",
+        example="What does your FAQ say about return policies?",
+    )
+
+
+class SessionStateResponse(BaseModel):
+    """Response model with session state information."""
+
+    chat_history: List[ChatHistoryItem] = Field(
+        ...,
+        description="List of messages in the conversation history",
+        alias="chatHistory",
+    )
+    additionals: Dict[str, str] = Field(
+        ...,
+        description="Additional information/context currently associated with the session",
+        example={
+            "policy_data": "Our return policy allows returns within 30 days of purchase..."
+        },
     )
 
     class Config:
